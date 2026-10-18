@@ -4,10 +4,24 @@ const n=v=>+v||0, pct=v=>v==null?'–':(v*100).toFixed(1)+'%', f1=v=>v==null?'�
 const S={side:'All',role:'All',view:'champ',sort:'pres',dir:-1};
 let D=null,ICONS={},AL={};
 // A player is identified by account id (falls back to the in-game name). Every name seen is kept; the most recent one is the current name.
-const pkey=p=>String(p['Account ID']||'')||('n:'+p.Player);
+const baseKey=p=>String(p['Account ID']||'')||('n:'+String(p.Player).toLowerCase());
+let LINKS=[],USER_LINKS=[],PAR={};
+const find=k=>{while(PAR[k]!==undefined&&PAR[k]!==k)k=PAR[k];return k};
+const pkey=p=>find(baseKey(p));
+// Names the user (or aliases.json) declared to be the same player are merged, even when no account id is known.
+function buildLinks(){PAR={};const nk={};
+  D.players.forEach(p=>{const l=String(p.Player).toLowerCase();(nk[l]=nk[l]||new Set()).add(baseKey(p))});
+  const keysOf=nm=>[...(nk[String(nm).toLowerCase()]||['n:'+String(nm).toLowerCase()])];
+  const uni=(a,b)=>{a=find(a);b=find(b);if(a!==b)PAR[b]=a};
+  LINKS.forEach(([a,b])=>{const ka=keysOf(a),kb=keysOf(b);[...ka.slice(1),...kb].forEach(k=>uni(ka[0],k))})}
+async function loadLinks(){let a=[];
+  try{a=await (await fetch('aliases.json')).json()}catch(e){}
+  try{USER_LINKS=(await chrome.storage.local.get('links')).links||[]}catch(e){USER_LINKS=[]}
+  LINKS=[...(Array.isArray(a)?a:[]),...USER_LINKS]}
+async function saveLinks(){await chrome.storage.local.set({links:USER_LINKS});LINKS=LINKS.filter(x=>!USER_LINKS.includes(x));await loadLinks();buildLinks();buildAlias();render();if(S.team)openTeam(S.team)}
 const pname=p=>(AL[pkey(p)]||{cur:p.Player}).cur;
 const akas=k=>{const o=AL[k];return o?Object.entries(o.names).sort((a,b)=>b[1]-a[1]).map(e=>e[0]).filter(x=>x!==o.cur):[]};
-function buildAlias(){AL={};const md=s=>+((/\d+/.exec(s||'')||[0])[0]);
+function buildAlias(){AL={};buildLinks();const md=s=>+((/\d+/.exec(s||'')||[0])[0]);
   D.players.forEach(p=>{const k=pkey(p),o=AL[k]||(AL[k]={names:{},cur:'',best:-1}),ord=md(p.Matchday)*100+n(p.Game);
     if(!(p.Player in o.names)||ord>o.names[p.Player])o.names[p.Player]=ord;
     if(ord>=o.best){o.best=ord;o.cur=p.Player}})}
@@ -122,8 +136,8 @@ const RO=['Top','Jungle','Mid','Bot','Support'];
 const mmss=x=>{if(x==null||isNaN(x))return'–';const s=Math.round(x*60);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const mday=s=>+((/\d+/.exec(s||'')||[0])[0]);
 const topOf=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]);
-function closeTeam(){$('#ov').classList.add('hide')}
-function openTeam(t){
+function closeTeam(){S.team=null;$('#ov').classList.add('hide')}
+function openTeam(t){S.team=t;
   const TG=D.tg.filter(r=>r.Team===t),PL=D.players.filter(p=>p.Team===t),gn=TG.length||1;
   const w=TG.filter(r=>r.Result==='Win').length,sum=k=>TG.reduce((a,r)=>a+n(r[k]),0);
   const K=sum('Kills'),Dd=sum('Deaths'),A=sum('Assists');
@@ -132,7 +146,8 @@ function openTeam(t){
   PL.forEach(p=>{const k=pkey(p),o=pm[k]||(pm[k]={acc:k,p:pname(p),g:0,w:0,k:0,d:0,a:0,ro:{},ch:{}}),r=p['Role (by row)'];
     o.g++;if(p.Result==='Win')o.w++;o.k+=n(p.Kills);o.d+=n(p.Deaths);o.a+=n(p.Assists);o.ro[r]=(o.ro[r]||0)+1;o.ch[p.Champion]=(o.ch[p.Champion]||0)+1});
   const pl=Object.values(pm).map(o=>({...o,role:(topOf(o.ro)[0]||[''])[0]})).sort((a,b)=>RO.indexOf(a.role)-RO.indexOf(b.role)||b.g-a.g);
-  const prow=o=>`<tr><td class="l"><b>${esc(o.p)}</b>${akas(o.acc).length?`<span class="aka" title="Other names used by this account">aka ${akas(o.acc).map(esc).join(', ')}</span>`:''}</td><td>${esc(o.role)}</td><td>${o.g}</td><td>${o.k}</td><td>${o.d}</td><td>${o.a}</td><td>${((o.k+o.a)/Math.max(o.d,1)).toFixed(1)}</td><td><div class="ics">${topOf(o.ch).slice(0,3).map(([c,k])=>`<span title="${esc(c)} ×${k}">${av(c,'sm')}</span>`).join('')}</div></td><td class="${o.w/o.g>=.5?'pos':'neg'}">${pct(o.w/o.g)}</td></tr>`;
+  const lnk=o=>`<select class="lk" data-k="${esc(o.acc)}" title="Link this player to another name (same person, renamed account)"><option value="">Same person as…</option>${pl.filter(x=>x.acc!==o.acc).map(x=>`<option value="${esc(x.acc)}">${esc(x.p)}</option>`).join('')}</select>`+(USER_LINKS.some(([a,b])=>[a,b].some(nm=>(AL[o.acc]||{names:{}}).names[nm]!==undefined))?` <button class="ul" data-k="${esc(o.acc)}" title="Remove the manual links of this player">unlink</button>`:'');
+  const prow=o=>`<tr><td class="l"><b>${esc(o.p)}</b>${akas(o.acc).length?`<span class="aka" title="Other names used by this account">aka ${akas(o.acc).map(esc).join(', ')}</span>`:''}<span class="aka">${lnk(o)}</span></td><td>${esc(o.role)}</td><td>${o.g}</td><td>${o.k}</td><td>${o.d}</td><td>${o.a}</td><td>${((o.k+o.a)/Math.max(o.d,1)).toFixed(1)}</td><td><div class="ics">${topOf(o.ch).slice(0,3).map(([c,k])=>`<span title="${esc(c)} ×${k}">${av(c,'sm')}</span>`).join('')}</div></td><td class="${o.w/o.g>=.5?'pos':'neg'}">${pct(o.w/o.g)}</td></tr>`;
   const bk={};D.players.forEach(p=>{const k=p.Match+'|'+p.Game;(bk[k]=bk[k]||[]).push(p)});
   const ic=(g,tm)=>(bk[g.Match+'|'+g.Game]||[]).filter(p=>p.Team===tm).sort((a,b)=>RO.indexOf(a['Role (by row)'])-RO.indexOf(b['Role (by row)'])).map(p=>`<span title="${esc(pname(p))} · ${esc(p.Champion)}">${av(p.Champion,'sm')}</span>`).join('');
   const gs=D.games.filter(g=>g['Blue side']===t||g['Red side']===t).sort((a,b)=>mday(b.Matchday)-mday(a.Matchday)||b.Game-a.Game);
@@ -143,6 +158,11 @@ function openTeam(t){
   $('#ov').classList.remove('hide');$('#ov').scrollTop=0;$('#mx').focus();
 }
 $('#t').addEventListener('click',e=>{const tr=e.target.closest('tr[data-team]');if(tr)openTeam(tr.dataset.team)});
+$('#ov').addEventListener('change',e=>{const s=e.target.closest('select.lk');if(!s||!s.value)return;
+  const a=(AL[s.dataset.k]||{}).cur,b=(AL[s.value]||{}).cur;if(a&&b){USER_LINKS.push([a,b]);saveLinks()}});
+$('#ov').addEventListener('click',e=>{const u=e.target.closest('button.ul');if(!u)return;
+  const nm=Object.keys((AL[u.dataset.k]||{names:{}}).names).map(x=>x.toLowerCase());
+  USER_LINKS=USER_LINKS.filter(([a,b])=>!nm.includes(a.toLowerCase())&&!nm.includes(b.toLowerCase()));saveLinks()});
 $('#ov').addEventListener('click',e=>{if(e.target.id==='ov'||e.target.id==='mx')return closeTeam();const l=e.target.closest('[data-team]');if(l)openTeam(l.dataset.team)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTeam()});
 function setData(d,icons,label){
@@ -166,7 +186,7 @@ function load(file){
   r.readAsArrayBuffer(file);
 }
 function fromStore(){
-  chrome.storage.local.get('dash').then(({dash})=>{
+  loadLinks().then(()=>chrome.storage.local.get('dash')).then(({dash})=>{
     if(dash&&dash.draft)try{setData(dash,dash.icons,'export of '+new Date(dash.ts).toLocaleString())}catch(e){}
   });
 }

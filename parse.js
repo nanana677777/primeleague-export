@@ -21,6 +21,35 @@ function parseTeamPage(doc) {
   return out;
 }
 
+// Lineup response of /ajax/leagues_match (action init): users per side with their Prime League id, name and game accounts.
+function parseLineups(j) {
+  const L = j && j.lineups; if (!L) return null;
+  const out = {};
+  for (const side of [1, 2]) {
+    out[side] = (L[side] || []).map(u => {
+      const id = String(u.id || (/\/users\/(\d+)/.exec(u.link || "") || [])[1] || "");
+      const names = (u.gameaccounts || []).map(g => { g = String(g); const m = /gameaccount-name[^>]*>([^<]+)</.exec(g); return clean(m ? m[1] : g.replace(/<[^>]*>/g, "")); }).filter(Boolean);
+      return { id, user: clean(u.name || ""), names };
+    }).filter(u => u.id);
+  }
+  return out[1].length || out[2].length ? out : null;
+}
+// Links in-game names to Prime League users: direct match on game account, else the single leftover name <-> single leftover user.
+function mapLineups(r, acct) {
+  if (!r.lineups) return;
+  [[1, r.match.team1], [2, r.match.team2]].forEach(([side, team]) => {
+    const users = r.lineups[side] || []; if (!users.length) return;
+    const names = [...new Set(r.players.filter(p => p.team === team).map(p => p.player))];
+    const used = new Set(), left = [];
+    names.forEach(nm => {
+      const u = users.find(u => u.names.some(x => x.toLowerCase() === nm.toLowerCase()));
+      if (u) { acct[nm.toLowerCase()] = { id: u.id, user: u.user }; used.add(u.id); } else left.push(nm);
+    });
+    const free = users.filter(u => !used.has(u.id));
+    if (left.length === 1 && free.length === 1) acct[left[0].toLowerCase()] = { id: free[0].id, user: free[0].user };
+  });
+}
+
 function parseMatch(doc, url) {
   const q = (r, s) => r.querySelector(s), qa = (r, s) => [...r.querySelectorAll(s)];
   const holder = q(doc, "#league-match-content");
@@ -86,7 +115,7 @@ function parseMatch(doc, url) {
         items: [0, 1, 2, 3, 4, 5, 6].map(i => items[i] || "") });
     });
   }
-  out.match.games = out.games.length; out.v = 3;
+  out.match.games = out.games.length; out.v = 4;
   return out;
 }
 

@@ -41,7 +41,7 @@ chrome.runtime.onMessage.addListener(m => { if (m.type === "progress") { render(
 $("#dash").onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
 $("#clr").onclick = async () => {
   const all = await chrome.storage.local.get(null);
-  await chrome.storage.local.remove(Object.keys(all).filter(k => k.startsWith("m:") || k === "icons"));
+  await chrome.storage.local.remove(Object.keys(all).filter(k => k.startsWith("m:") || k === "icons" || k === "acct"));
   cacheInfo();
 };
 

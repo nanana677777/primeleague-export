@@ -21,6 +21,17 @@
     chrome.runtime.sendMessage({ type: "progress", ...state }).catch(() => {});
   };
 
+  // The lineup (Prime League users of the match) is loaded by the site through this ajax call.
+  async function fetchLineups(id) {
+    const lang = (/^\/([a-z]{2})\//.exec(location.pathname) || [])[1] || "en";
+    const body = new URLSearchParams({ id, action: "init", language: lang }), h = { "X-Requested-With": "XMLHttpRequest" };
+    try {
+      let t = await (await fetch("/ajax/leagues_match", { method: "POST", credentials: "include", headers: { ...h, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }, body })).text(), j;
+      try { j = JSON.parse(t); } catch (e) { j = JSON.parse(await (await fetch("/ajax/leagues_match?" + body, { credentials: "include", headers: h })).text()); }
+      return parseLineups(j);
+    } catch (e) { console.warn("Prime League export: lineup", id, e); return null; }
+  }
+
   async function runExport(opts) {
     if (state.running) return;
     state.running = true; btn.disabled = true;
@@ -32,12 +43,12 @@
       const [url, score] = entries[i], key = "m:" + mid(url), hit = cache[key];
       emit(`Reading match ${i + 1}/${entries.length}…`, i);
       let r = null;
-      if (hit && hit.v === 3 && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
+      if (hit && hit.v === 4 && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
       else {
         try {
           const res = await fetch(url, { credentials: "include" });
           r = parseMatch(new DOMParser().parseFromString(await res.text(), "text/html"), url);
-          if (r.games.length) { await chrome.storage.local.set({ [key]: r }); fresh++; } else r = null;
+          if (r.games.length) { r.lineups = await fetchLineups(mid(url)); await chrome.storage.local.set({ [key]: r }); fresh++; } else r = null;
         } catch (e) { console.warn("Prime League export:", url, e); }
         await sleep(400);
       }
@@ -57,6 +68,8 @@
         } catch (e) { console.warn("Prime League export: team page", u, e); }
         await sleep(300);
       }
+      await chrome.storage.local.set({ acct });
+      results.forEach(r => mapLineups(r, acct));
       await chrome.storage.local.set({ acct });
       results.forEach(r => r.players.forEach(p => { const a = acct[(p.player || "").toLowerCase()]; p.account = a ? a.id : ""; p.user = a ? a.user : ""; }));
     } catch (e) { console.warn(e); }
