@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 let tab;
 const ask = async msg => { try { return await chrome.tabs.sendMessage(tab.id, msg); } catch (e) { return null; } };
-const opts = () => ({ icons: $("#icons").checked, refresh: $("#refresh").checked });
+const opts = () => ({ icons: $("#icons").checked, refresh: $("#refresh").checked, openDash: $("#opendash").checked });
 
 function render(s) {
   $("#fill").style.width = s.total ? Math.round((s.done / s.total) * 100) + "%" : "0%";
@@ -19,6 +19,7 @@ async function cacheInfo() {
   const saved = (await chrome.storage.local.get("opts")).opts || {};
   $("#icons").checked = saved.icons !== false;
   $("#refresh").checked = !!saved.refresh;
+  $("#opendash").checked = !!saved.openDash;
   const last = await cacheInfo();
   const s = await ask({ type: "status" });
   if (s && s.ok) {

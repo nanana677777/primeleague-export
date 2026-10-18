@@ -36,6 +36,26 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
   if (msg.type === "updcheck") { updCheck().then(send); return true; }
 });
 
+// Opens the dashboard (or focuses it if already open: it refreshes itself when new data is saved).
+chrome.runtime.onMessage.addListener((msg, _sender, send) => {
+  if (msg.type !== "opendash") return;
+  (async () => {
+    const url = chrome.runtime.getURL("dashboard.html");
+    try {
+      const ctx = await chrome.runtime.getContexts({ contextTypes: ["TAB"] });
+      const c = ctx.find(x => (x.documentUrl || "").split(/[?#]/)[0] === url);
+      if (c && c.tabId >= 0) {
+        const t = await chrome.tabs.update(c.tabId, { active: true });
+        if (t && t.windowId != null) await chrome.windows.update(t.windowId, { focused: true });
+        return send({ ok: true, reused: true });
+      }
+    } catch (e) {}
+    await chrome.tabs.create({ url });
+    send({ ok: true });
+  })();
+  return true;
+});
+
 // Downloads champion icons (cross-origin) and returns small JPEG data URIs.
 chrome.runtime.onMessage.addListener((msg, _sender, send) => {
   if (msg.type !== "icons") return;

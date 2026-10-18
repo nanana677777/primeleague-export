@@ -92,6 +92,7 @@
     await chrome.storage.local.set({ last: { t: Date.now(), group: results[0].match.group, matches: results.length } });
     state.running = false; btn.disabled = false;
     emit(`Done: ${results.length} matches (${fresh} new)`, entries.length);
+    if (opts && opts.openDash) { try { chrome.runtime.sendMessage({ type: "opendash" }); } catch (e) {} }
     setTimeout(() => { if (!state.running) emit("", state.done); }, 4000);
   }
 
