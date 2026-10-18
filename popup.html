@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Prime League Export</title>
+<style>
+:root{--bg:#fff;--fg:#14161c;--mut:#667085;--line:#dde1ea;--p2:#eef0f5;--acc:#6857e8}
+@media (prefers-color-scheme:dark){:root{--bg:#151821;--fg:#e9ebf1;--mut:#8b92a5;--line:#252a37;--p2:#1d212c;--acc:#8c7dff}}
+body{margin:0;width:330px;padding:14px;background:var(--bg);color:var(--fg);font:13px/1.45 system-ui,sans-serif}
+h1{font-size:15px;margin:0 0 2px}.mut{color:var(--mut)}
+label{display:flex;gap:8px;align-items:center;margin:7px 0;cursor:pointer}
+button{font:inherit;color:var(--fg);background:var(--p2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer}
+button.p{width:100%;margin-top:6px;padding:10px;background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.bar{height:6px;background:var(--p2);border-radius:3px;overflow:hidden;margin:12px 0 5px}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+.hide{display:none}#upd{margin-top:12px;font-size:12px}#upd button{width:100%;margin:0 0 6px;background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.row{display:flex;gap:8px;margin-top:12px}.row button{flex:1}
+</style>
+<h1>Prime League Export</h1>
+<div id="st" class="mut">Checking the page…</div>
+<label><input type="checkbox" id="icons" checked> Include champion icons</label>
+<label><input type="checkbox" id="refresh"> Re-download every match (ignore saved data)</label>
+<button class="p" id="go" disabled>Export Excel</button>
+<div class="bar"><i id="fill"></i></div>
+<div id="msg" class="mut">&nbsp;</div>
+<div class="row"><button id="dash">Open dashboard</button><button id="clr">Clear saved data</button></div>
+<div id="upd" class="mut"><button id="updgo" class="hide">Update available</button><span id="updtxt"></span></div>
+<script src="updater-core.js"></script>
+<script src="popup.js"></script>
