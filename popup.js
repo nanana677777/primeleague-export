@@ -45,11 +45,22 @@ $("#clr").onclick = async () => {
   cacheInfo();
 };
 
-$("#updtxt").textContent = "v" + chrome.runtime.getManifest().version;
-$("#updgo").onclick = () => chrome.tabs.create({ url: chrome.runtime.getURL("update.html") });
-checkUpdate().then(u => {
-  chrome.action.setBadgeText({ text: u.available ? "NEW" : "" });
-  if (u.available) { $("#updgo").textContent = "Update to v" + u.remote; $("#updgo").classList.remove("hide"); $("#updtxt").textContent = "v" + u.local + " installed"; }
-  else $("#updtxt").innerHTML = `v${u.local} · up to date · <a href="#" id="rs" style="color:inherit">re-sync</a>`;
-  const rs = $("#rs"); if (rs) rs.onclick = e => { e.preventDefault(); $("#updgo").onclick(); };
-}).catch(() => {});
+const ver = chrome.runtime.getManifest().version;
+$("#updtxt").textContent = "v" + ver;
+const showUpd = u => {
+  if (!u) return;
+  if (u.available) { $("#updgo").textContent = "Update to v" + u.remote; $("#updgo").classList.remove("hide"); $("#updtxt").textContent = "v" + u.local + " installed · new version available"; }
+  else $("#updtxt").textContent = "v" + u.local + " · up to date";
+};
+chrome.storage.local.get("upd").then(({ upd }) => showUpd(upd)); // instant, from the background check
+chrome.runtime.sendMessage({ type: "updcheck" }).then(showUpd).catch(() => {}); // then refresh
+$("#updgo").onclick = async () => {
+  $("#updgo").disabled = true; $("#ubar").classList.remove("hide");
+  const r = await chrome.runtime.sendMessage({ type: "update" }).catch(() => null);
+  if (r && r.tab) { $("#updtxt").textContent = "First time: choose the extension folder in the new tab."; $("#ubar").classList.add("hide"); }
+  if (r && r.error) $("#updgo").disabled = false;
+};
+chrome.runtime.onMessage.addListener(m => {
+  if (m.type !== "updprog") return;
+  $("#ufill").style.width = Math.round((m.frac || 0) * 100) + "%"; $("#updtxt").textContent = m.text;
+});
