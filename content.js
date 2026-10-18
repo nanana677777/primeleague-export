@@ -18,7 +18,7 @@
   const emit = (text, done) => {
     state.text = text; if (done !== undefined) state.done = done;
     btn.textContent = text || label;
-    chrome.runtime.sendMessage({ type: "progress", ...state }).catch(() => {});
+    try { chrome.runtime.sendMessage({ type: "progress", ...state }).catch(() => {}); } catch (e) {}
   };
 
   // The lineup (Prime League users of the match) is loaded by the site through this ajax call.
@@ -95,7 +95,13 @@
     setTimeout(() => { if (!state.running) emit("", state.done); }, 4000);
   }
 
-  btn.onclick = async () => runExport((await chrome.storage.local.get("opts")).opts || {});
+  // After an extension update/reload, this page keeps an orphaned script: chrome.* throws "Extension context invalidated".
+  const alive = () => { try { return !!chrome.runtime.id; } catch (e) { return false; } };
+  const stale = () => { btn.textContent = "Extension updated: reload this page (F5)"; btn.style.background = "#b45309"; };
+  btn.onclick = async () => {
+    if (!alive()) return stale();
+    try { await runExport((await chrome.storage.local.get("opts")).opts || {}); } catch (e) { if (!alive()) stale(); else throw e; }
+  };
   chrome.runtime.onMessage.addListener((msg, _s, send) => {
     if (msg.type === "status") send({ ok: true, title, ...state });
     else if (msg.type === "export") { runExport(msg.opts || {}); send({ started: true }); }
