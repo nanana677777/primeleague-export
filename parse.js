@@ -10,6 +10,14 @@ const resOf = s => /^(sieg|victory|win)$/i.test(s) ? "Win" : "Loss";
 const kda = s => { const p = (s || "").split("/"); return [0, 1, 2].map(i => /^\d+$/.test((p[i] || "").trim()) ? +p[i] : null); };
 const secs = s => { const m = /^(\d+):(\d+)$/.exec(s || ""); return m ? +m[1] * 60 + +m[2] : null; };
 
+// Stable account id of a player row (profile link or data attribute); "" when the page has none.
+const acctId = p => {
+  const link = p.querySelector(".submatch-lol-player-name a[href]") || p.querySelector("a[href]");
+  if (link) { const h = link.getAttribute("href") || "", m = /(?:users?|players?|profiles?|summoners?|accounts?|members?)\/(\d+)/i.exec(h) || /(\d{3,})/.exec(h); if (m) return m[1]; }
+  for (const el of [p, ...p.querySelectorAll("*")]) for (const a of el.attributes) if (/^data-(user|player|account|summoner|member|id|puuid)/i.test(a.name) && a.value) return a.value;
+  return "";
+};
+
 function parseMatch(doc, url) {
   const q = (r, s) => r.querySelector(s), qa = (r, s) => [...r.querySelectorAll(s)];
   const holder = q(doc, "#league-match-content");
@@ -68,13 +76,13 @@ function parseMatch(doc, url) {
       const champ = ci ? clean(ci.getAttribute("alt")) : "";
       icon(champ, ci);
       out.players.push({ match: name, group, matchday, game: gno, team: h.team || "", side: colorOf(p), role: ROLES[r - 1] || "",
-        player: T(q(p, ".submatch-lol-player-name")), champion: champ, level: num(T(q(p, ".player-hero-level"))), kills: k, deaths: d,
+        player: T(q(p, ".submatch-lol-player-name")), account: acctId(p), champion: champ, level: num(T(q(p, ".player-hero-level"))), kills: k, deaths: d,
         assists: a, cs: num(T(q(p, ".submatch-lol-player-minions"))), gold: gold ? num(gold.getAttribute("title") || T(gold)) : null,
         result: h.result || "", keystone: perks[0] || "", tree: perks[1] || "", spell1: spells[0] || "", spell2: spells[1] || "",
         items: [0, 1, 2, 3, 4, 5, 6].map(i => items[i] || "") });
     });
   }
-  out.match.games = out.games.length;
+  out.match.games = out.games.length; out.v = 2;
   return out;
 }
 
@@ -95,8 +103,8 @@ function buildWorkbook(results, icons) {
     all("games").map(g => [g.match, g.group, g.matchday, g.date, g.game, g.gameId, g.blue, g.red, g.winner, g.min, g.created, g.start, g.end]));
   add("TeamGames", ["Match", "Group", "Matchday", "Game", "Team", "Opponent", "Side", "Result", "Kills", "Deaths", "Assists", "Gold", "Towers", "Inhibitors", "Barons", "Dragons", "Heralds", "Duration (min)"],
     all("tgs").map(t => [t.match, t.group, t.matchday, t.game, t.team, t.opp, t.side, t.result, t.kills, t.deaths, t.assists, t.gold, t.towers, t.inh, t.barons, t.dragons, t.heralds, t.min]));
-  add("Players", ["Match", "Group", "Matchday", "Game", "Team", "Side", "Role (by row)", "Player", "Champion", "Level", "Kills", "Deaths", "Assists", "CS", "Gold", "Result", "Keystone", "Rune tree", "Spell 1", "Spell 2", "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7"],
-    all("players").map(p => [p.match, p.group, p.matchday, p.game, p.team, p.side, p.role, p.player, p.champion, p.level, p.kills, p.deaths, p.assists, p.cs, p.gold, p.result, p.keystone, p.tree, p.spell1, p.spell2, ...p.items]));
+  add("Players", ["Match", "Group", "Matchday", "Game", "Team", "Side", "Role (by row)", "Player", "Champion", "Level", "Kills", "Deaths", "Assists", "CS", "Gold", "Result", "Keystone", "Rune tree", "Spell 1", "Spell 2", "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Account ID"],
+    all("players").map(p => [p.match, p.group, p.matchday, p.game, p.team, p.side, p.role, p.player, p.champion, p.level, p.kills, p.deaths, p.assists, p.cs, p.gold, p.result, p.keystone, p.tree, p.spell1, p.spell2, ...p.items, p.account || ""]));
   add("Draft", ["Match", "Group", "Matchday", "Game", "Draft order", "Type", "Champion", "Side", "Team"],
     all("drafts").map(d => [d.match, d.group, d.matchday, d.game, d.order, d.type, d.champion, d.side, d.team]));
   add("Icons", ["Champion", "Image"], Object.entries(icons || {}).sort((a, b) => a[0].localeCompare(b[0])));

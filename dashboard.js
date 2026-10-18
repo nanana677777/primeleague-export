@@ -2,7 +2,15 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const n=v=>+v||0, pct=v=>v==null?'–':(v*100).toFixed(1)+'%', f1=v=>v==null?'–':v.toFixed(1);
 const S={side:'All',role:'All',view:'champ',sort:'pres',dir:-1};
-let D=null,ICONS={};
+let D=null,ICONS={},AL={};
+// A player is identified by account id (falls back to the in-game name). Every name seen is kept; the most recent one is the current name.
+const pkey=p=>String(p['Account ID']||'')||('n:'+p.Player);
+const pname=p=>(AL[pkey(p)]||{cur:p.Player}).cur;
+const akas=k=>{const o=AL[k];return o?Object.entries(o.names).sort((a,b)=>b[1]-a[1]).map(e=>e[0]).filter(x=>x!==o.cur):[]};
+function buildAlias(){AL={};const md=s=>+((/\d+/.exec(s||'')||[0])[0]);
+  D.players.forEach(p=>{const k=pkey(p),o=AL[k]||(AL[k]={names:{},cur:'',best:-1}),ord=md(p.Matchday)*100+n(p.Game);
+    if(!(p.Player in o.names)||ord>o.names[p.Player])o.names[p.Player]=ord;
+    if(ord>=o.best){o.best=ord;o.cur=p.Player}})}
 const hue=s=>[...s].reduce((a,c)=>(a*31+c.charCodeAt(0))%360,7);
 const ini=s=>s.replace(/[^A-Za-z0-9 ]/g,'').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?';
 const av=(s,c='')=>ICONS[s]?`<img class="av ${c}" alt="" src="${esc(ICONS[s])}">`:`<span class="av ${c}" style="--h:${hue(s)}">${esc(ini(s))}</span>`;
@@ -23,7 +31,7 @@ function champRows(){
     if(S.role!=='All'&&p['Role (by row)']!==S.role)return;
     const o=get(p.Champion);o.picks++;if(p.Result==='Win')o.wins++;
     o.k+=n(p.Kills);o.d+=n(p.Deaths);o.a+=n(p.Assists);o.cs+=n(p.CS);o.gold+=n(p.Gold);o.min+=dur[p.Match+'|'+p.Game]||0;
-    o.pl[p.Player]=(o.pl[p.Player]||0)+1;
+    const pn=pname(p);o.pl[pn]=(o.pl[pn]||0)+1;
   });
   return Object.values(m).filter(o=>o.picks+o.bans>0.001).map(o=>{
     const top=Object.entries(o.pl).sort((a,b)=>b[1]-a[1])[0];
@@ -121,12 +129,12 @@ function openTeam(t){
   const K=sum('Kills'),Dd=sum('Deaths'),A=sum('Assists');
   const cells=[['Games',TG.length],['Wins',w],['Losses',TG.length-w],['Win %',pct(w/gn)],['KDA',((K+A)/Math.max(Dd,1)).toFixed(2)],['Kills',K],['Deaths',Dd],['Assists',A],['Avg gold',(sum('Gold')/gn/1000).toFixed(1)+'k'],['Avg length',mmss(sum('Duration (min)')/gn)]];
   const pm={};
-  PL.forEach(p=>{const o=pm[p.Player]||(pm[p.Player]={p:p.Player,g:0,w:0,k:0,d:0,a:0,ro:{},ch:{}}),r=p['Role (by row)'];
+  PL.forEach(p=>{const k=pkey(p),o=pm[k]||(pm[k]={acc:k,p:pname(p),g:0,w:0,k:0,d:0,a:0,ro:{},ch:{}}),r=p['Role (by row)'];
     o.g++;if(p.Result==='Win')o.w++;o.k+=n(p.Kills);o.d+=n(p.Deaths);o.a+=n(p.Assists);o.ro[r]=(o.ro[r]||0)+1;o.ch[p.Champion]=(o.ch[p.Champion]||0)+1});
   const pl=Object.values(pm).map(o=>({...o,role:(topOf(o.ro)[0]||[''])[0]})).sort((a,b)=>RO.indexOf(a.role)-RO.indexOf(b.role)||b.g-a.g);
-  const prow=o=>`<tr><td class="l"><b>${esc(o.p)}</b></td><td>${esc(o.role)}</td><td>${o.g}</td><td>${o.k}</td><td>${o.d}</td><td>${o.a}</td><td>${((o.k+o.a)/Math.max(o.d,1)).toFixed(1)}</td><td><div class="ics">${topOf(o.ch).slice(0,3).map(([c,k])=>`<span title="${esc(c)} ×${k}">${av(c,'sm')}</span>`).join('')}</div></td><td class="${o.w/o.g>=.5?'pos':'neg'}">${pct(o.w/o.g)}</td></tr>`;
+  const prow=o=>`<tr><td class="l"><b>${esc(o.p)}</b>${akas(o.acc).length?`<span class="aka" title="Other names used by this account">aka ${akas(o.acc).map(esc).join(', ')}</span>`:''}</td><td>${esc(o.role)}</td><td>${o.g}</td><td>${o.k}</td><td>${o.d}</td><td>${o.a}</td><td>${((o.k+o.a)/Math.max(o.d,1)).toFixed(1)}</td><td><div class="ics">${topOf(o.ch).slice(0,3).map(([c,k])=>`<span title="${esc(c)} ×${k}">${av(c,'sm')}</span>`).join('')}</div></td><td class="${o.w/o.g>=.5?'pos':'neg'}">${pct(o.w/o.g)}</td></tr>`;
   const bk={};D.players.forEach(p=>{const k=p.Match+'|'+p.Game;(bk[k]=bk[k]||[]).push(p)});
-  const ic=(g,tm)=>(bk[g.Match+'|'+g.Game]||[]).filter(p=>p.Team===tm).sort((a,b)=>RO.indexOf(a['Role (by row)'])-RO.indexOf(b['Role (by row)'])).map(p=>`<span title="${esc(p.Player)} · ${esc(p.Champion)}">${av(p.Champion,'sm')}</span>`).join('');
+  const ic=(g,tm)=>(bk[g.Match+'|'+g.Game]||[]).filter(p=>p.Team===tm).sort((a,b)=>RO.indexOf(a['Role (by row)'])-RO.indexOf(b['Role (by row)'])).map(p=>`<span title="${esc(pname(p))} · ${esc(p.Champion)}">${av(p.Champion,'sm')}</span>`).join('');
   const gs=D.games.filter(g=>g['Blue side']===t||g['Red side']===t).sort((a,b)=>mday(b.Matchday)-mday(a.Matchday)||b.Game-a.Game);
   const card=g=>{const blue=g['Blue side']===t,opp=blue?g['Red side']:g['Blue side'],win=g.Winner===t;
     const side=(tm,res,sd,self)=>`<div class="side"><b class="${self?'':'lnk'}"${self?'':` data-team="${esc(tm)}"`}>${esc(tm)}</b><span class="res">${res} · ${sd}</span><div class="ic">${ic(g,tm)}</div></div>`;
@@ -139,7 +147,7 @@ $('#ov').addEventListener('click',e=>{if(e.target.id==='ov'||e.target.id==='mx')
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTeam()});
 function setData(d,icons,label){
   if(!d.draft.length||!d.players.length)throw new Error('Sheets Draft, Players, TeamGames and Games were not found. Use a file exported by the extension or the Python script.');
-  D=d;ICONS=icons||{};
+  D=d;ICONS=icons||{};buildAlias();
   const matches=new Set(d.games.map(x=>x.Match)).size,grp=d.games[0]&&d.games[0].Group||'';
   $('#sub').textContent=`${grp} · ${matches} matches · ${d.games.length} games · ${label}`;
   $('#drop').classList.add('hide');$('#app').classList.remove('hide');

@@ -32,7 +32,7 @@
       const [url, score] = entries[i], key = "m:" + mid(url), hit = cache[key];
       emit(`Reading match ${i + 1}/${entries.length}…`, i);
       let r = null;
-      if (hit && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
+      if (hit && hit.v === 2 && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
       else {
         try {
           const res = await fetch(url, { credentials: "include" });
