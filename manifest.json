@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Prime League Stats Export",
-  "version": "2.0",
+  "version": "2.1",
   "description": "Adds an Export button on Prime League group pages: picks, bans, teams and players to Excel.",
   "host_permissions": [
     "https://*.heartbase.gg/*",
