@@ -1,0 +1,74 @@
+(() => {
+  const links = [...document.querySelectorAll('.league-group-matches a[href*="/leagues/matches/"]')]
+    .filter(a => /^\d+\s*:\s*\d+$/.test(a.textContent.trim()));
+  if (!links.length) return; // not a group page with played matches
+  const matches = new Map(links.map(a => [a.href, a.textContent.replace(/\s+/g, "")])); // url -> score
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const mid = u => (/\/matches\/(\d+)/.exec(u) || [])[1];
+  const title = T(document.querySelector(".page-title h1")) || "Prime League group";
+  const state = { running: false, done: 0, total: matches.size, text: "" };
+
+  const btn = document.createElement("button");
+  const label = `Export stats (.xlsx) · ${matches.size} matches`;
+  btn.textContent = label;
+  btn.style.cssText = "position:fixed;right:20px;bottom:20px;z-index:2147483647;padding:11px 16px;border:0;border-radius:10px;" +
+    "background:#6857e8;color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35)";
+  document.body.appendChild(btn);
+
+  const emit = (text, done) => {
+    state.text = text; if (done !== undefined) state.done = done;
+    btn.textContent = text || label;
+    chrome.runtime.sendMessage({ type: "progress", ...state }).catch(() => {});
+  };
+
+  async function runExport(opts) {
+    if (state.running) return;
+    state.running = true; btn.disabled = true;
+    const entries = [...matches.entries()];
+    const cache = opts.refresh ? {} : await chrome.storage.local.get(entries.map(([u]) => "m:" + mid(u)));
+    const results = [], urlMap = {};
+    let fresh = 0;
+    for (let i = 0; i < entries.length; i++) {
+      const [url, score] = entries[i], key = "m:" + mid(url), hit = cache[key];
+      emit(`Reading match ${i + 1}/${entries.length}…`, i);
+      let r = null;
+      if (hit && hit.v === 2 && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
+      else {
+        try {
+          const res = await fetch(url, { credentials: "include" });
+          r = parseMatch(new DOMParser().parseFromString(await res.text(), "text/html"), url);
+          if (r.games.length) { await chrome.storage.local.set({ [key]: r }); fresh++; } else r = null;
+        } catch (e) { console.warn("Prime League export:", url, e); }
+        await sleep(400);
+      }
+      if (r) { results.push(r); Object.assign(urlMap, r.icons); }
+    }
+    if (!results.length) { state.running = false; btn.disabled = false; emit("No game data found. Are you logged out or blocked?", state.done); return; }
+
+    let icons = {};
+    if (opts.icons !== false) {
+      const store = (await chrome.storage.local.get("icons")).icons || {};
+      const need = Object.fromEntries(Object.entries(urlMap).filter(([c]) => !store[c]));
+      if (Object.keys(need).length) {
+        emit("Downloading champion icons…");
+        try { Object.assign(store, (await chrome.runtime.sendMessage({ type: "icons", urls: need })) || {}); } catch (e) { console.warn(e); }
+        await chrome.storage.local.set({ icons: store });
+      }
+      icons = Object.fromEntries(Object.entries(store).filter(([c]) => c in urlMap));
+    }
+    const group = (results[0].match.group || "group").replace(/[^\w.-]+/g, "_");
+    const wb = buildWorkbook(results, icons), js = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: "" });
+    await chrome.storage.local.set({ dash: { draft: js("Draft"), players: js("Players"), tg: js("TeamGames"), games: js("Games"), icons, ts: Date.now() } });
+    XLSX.writeFile(wb, `primeleague_${group}.xlsx`);
+    await chrome.storage.local.set({ last: { t: Date.now(), group: results[0].match.group, matches: results.length } });
+    state.running = false; btn.disabled = false;
+    emit(`Done: ${results.length} matches (${fresh} new)`, entries.length);
+    setTimeout(() => { if (!state.running) emit("", state.done); }, 4000);
+  }
+
+  btn.onclick = async () => runExport((await chrome.storage.local.get("opts")).opts || {});
+  chrome.runtime.onMessage.addListener((msg, _s, send) => {
+    if (msg.type === "status") send({ ok: true, title, ...state });
+    else if (msg.type === "export") { runExport(msg.opts || {}); send({ started: true }); }
+  });
+})();

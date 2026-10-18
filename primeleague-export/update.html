@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Update – Prime League Export</title>
+<style>
+:root{--bg:#fff;--fg:#14161c;--mut:#667085;--line:#dde1ea;--p2:#eef0f5;--acc:#6857e8;--bad:#d92d20;--ok:#12805c}
+@media (prefers-color-scheme:dark){:root{--bg:#151821;--fg:#e9ebf1;--mut:#8b92a5;--line:#252a37;--p2:#1d212c;--acc:#8c7dff;--bad:#ff7a70;--ok:#4cc79a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,sans-serif;display:grid;place-items:start center;padding:48px 16px}
+main{width:100%;max-width:480px}
+h1{font-size:20px;margin:0 0 4px}.mut{color:var(--mut)}
+button{font:inherit;color:#fff;background:var(--acc);border:0;border-radius:8px;padding:11px 16px;cursor:pointer;font-weight:600;margin-top:16px}
+button:disabled{opacity:.5;cursor:default}
+.bar{height:6px;background:var(--p2);border-radius:3px;overflow:hidden;margin:18px 0 6px}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+.err{color:var(--bad)}.ok{color:var(--ok)}
+</style>
+<main>
+  <h1>Update Prime League Export</h1>
+  <div id="ver" class="mut">Checking GitHub…</div>
+  <p class="mut" id="hint" hidden>First time only: choose the folder this extension is loaded from (the one containing <code>manifest.json</code>). Chrome will remember it.</p>
+  <button id="go" disabled>Update now</button>
+  <div class="bar"><i id="fill"></i></div>
+  <div id="msg" class="mut">&nbsp;</div>
+</main>
+<script src="updater-core.js"></script>
+<script src="update.js"></script>

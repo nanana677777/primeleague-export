@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Prime League Stats Export",
+  "version": "1.7",
+  "description": "Adds an Export button on Prime League group pages: picks, bans, teams and players to Excel.",
+  "host_permissions": [
+    "https://*.heartbase.gg/*",
+    "https://raw.githubusercontent.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.primeleague.gg/*"
+      ],
+      "js": [
+        "xlsx.full.min.js",
+        "parse.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.primeleague.gg/*"
+      ],
+      "js": [
+        "banner.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "alarms"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Prime League Export"
+  }
+}
