@@ -32,7 +32,7 @@
       const [url, score] = entries[i], key = "m:" + mid(url), hit = cache[key];
       emit(`Reading match ${i + 1}/${entries.length}…`, i);
       let r = null;
-      if (hit && hit.v === 2 && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
+      if (hit && hit.v === 3 && hit.games.length && hit.match.score.replace(/\s+/g, "") === score) r = hit; // cached, same score
       else {
         try {
           const res = await fetch(url, { credentials: "include" });
@@ -44,6 +44,22 @@
       if (r) { results.push(r); Object.assign(urlMap, r.icons); }
     }
     if (!results.length) { state.running = false; btn.disabled = false; emit("No game data found. Are you logged out or blocked?", state.done); return; }
+
+    // Map in-game names to Prime League accounts via the team rosters (remembered across exports, so renamed players stay linked).
+    try {
+      emit("Reading team rosters…");
+      const acct = (await chrome.storage.local.get("acct")).acct || {};
+      const turls = [...new Set(results.flatMap(r => [r.match.team1Url, r.match.team2Url]).filter(Boolean))];
+      for (const u of turls) {
+        try {
+          const doc = new DOMParser().parseFromString(await (await fetch(u, { credentials: "include" })).text(), "text/html");
+          for (const m of parseTeamPage(doc)) for (const nm of m.names) acct[nm.toLowerCase()] = { id: m.id, user: m.user };
+        } catch (e) { console.warn("Prime League export: team page", u, e); }
+        await sleep(300);
+      }
+      await chrome.storage.local.set({ acct });
+      results.forEach(r => r.players.forEach(p => { const a = acct[(p.player || "").toLowerCase()]; p.account = a ? a.id : ""; p.user = a ? a.user : ""; }));
+    } catch (e) { console.warn(e); }
 
     let icons = {};
     if (opts.icons !== false) {

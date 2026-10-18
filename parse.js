@@ -10,13 +10,16 @@ const resOf = s => /^(sieg|victory|win)$/i.test(s) ? "Win" : "Loss";
 const kda = s => { const p = (s || "").split("/"); return [0, 1, 2].map(i => /^\d+$/.test((p[i] || "").trim()) ? +p[i] : null); };
 const secs = s => { const m = /^(\d+):(\d+)$/.exec(s || ""); return m ? +m[1] * 60 + +m[2] : null; };
 
-// Stable account id of a player row (profile link or data attribute); "" when the page has none.
-const acctId = p => {
-  const link = p.querySelector(".submatch-lol-player-name a[href]") || p.querySelector("a[href]");
-  if (link) { const h = link.getAttribute("href") || "", m = /(?:users?|players?|profiles?|summoners?|accounts?|members?)\/(\d+)/i.exec(h) || /(\d{3,})/.exec(h); if (m) return m[1]; }
-  for (const el of [p, ...p.querySelectorAll("*")]) for (const a of el.attributes) if (/^data-(user|player|account|summoner|member|id|puuid)/i.test(a.name) && a.value) return a.value;
-  return "";
-};
+// Roster of a team page: Prime League user id + game account names (Riot IDs) per member.
+function parseTeamPage(doc) {
+  const out = [];
+  for (const li of doc.querySelectorAll(".content-portrait-grid-l li")) {
+    const a = li.querySelector('a[href*="/users/"]'), m = a && /\/users\/(\d+)/.exec(a.getAttribute("href") || "");
+    if (!m) continue;
+    out.push({ id: m[1], user: T(li.querySelector("h3")), names: [...li.querySelectorAll(".gameaccount-name")].map(T).filter(Boolean) });
+  }
+  return out;
+}
 
 function parseMatch(doc, url) {
   const q = (r, s) => r.querySelector(s), qa = (r, s) => [...r.querySelectorAll(s)];
@@ -28,8 +31,9 @@ function parseMatch(doc, url) {
   const when = T(q(doc, "#league-match-time")), matchday = subs[1] || "";
   const [t1 = "", t2 = ""] = qa(doc, ".content-match-head-team h2").map(T);
   const name = `${t1} vs ${t2}`;
+  const [u1 = "", u2 = ""] = qa(doc, ".content-match-head-team").map(t => { const a = q(t, 'a[href*="/teams/"]'); try { return a ? new URL(a.getAttribute("href"), url).href : ""; } catch (e) { return ""; } });
   const out = { match: { id: mid, group, matchday, date: when, team1: t1, team2: t2, score: T(q(doc, ".txt-score")),
-    format: T(q(doc, ".content-match-head-score .txt-info")), games: 0, url }, games: [], drafts: [], tgs: [], players: [], icons: {} };
+    format: T(q(doc, ".content-match-head-score .txt-info")), games: 0, url, team1Url: u1, team2Url: u2 }, games: [], drafts: [], tgs: [], players: [], icons: {} };
   const icon = (champ, img) => { const s = img && (img.getAttribute("src") || img.getAttribute("data-src") || ""); if (champ && s && s.startsWith("http")) out.icons[champ] = s; };
 
   for (const sec of qa(doc, "section.league-match-sub-lol")) {
@@ -50,9 +54,9 @@ function parseMatch(doc, url) {
     const blue = (Object.values(heads).find(h => h.color === "Blue") || {}).team || "";
     const red = (Object.values(heads).find(h => h.color === "Red") || {}).team || "";
     const winner = (Object.values(heads).find(h => h.result === "Win") || {}).team || "";
-    const dur = secs(info["Dauer"]), min = dur ? Math.round(dur / 60 * 100) / 100 : null;
+    const dur = secs(info["Duration"] || info["Dauer"]), min = dur ? Math.round(dur / 60 * 100) / 100 : null;
     out.games.push({ match: name, group, matchday, date: when, game: gno, gameId: info["Ingame ID"] || "", blue, red, winner, min,
-      created: info["Erstellt am"] || "", start: info["Start"] || "", end: info["Ende"] || "" });
+      created: info["Created at"] || info["Erstellt am"] || "", start: info["Start"] || "", end: info["End"] || info["Ende"] || "" });
 
     qa(sec, "ul.submatch-lol-draft li.draft-item").forEach((li, i) => {
       const img = q(li, "img"), champ = clean(li.getAttribute("title") || (img && img.getAttribute("alt")) || "");
@@ -76,13 +80,13 @@ function parseMatch(doc, url) {
       const champ = ci ? clean(ci.getAttribute("alt")) : "";
       icon(champ, ci);
       out.players.push({ match: name, group, matchday, game: gno, team: h.team || "", side: colorOf(p), role: ROLES[r - 1] || "",
-        player: T(q(p, ".submatch-lol-player-name")), account: acctId(p), champion: champ, level: num(T(q(p, ".player-hero-level"))), kills: k, deaths: d,
+        player: T(q(p, ".submatch-lol-player-name")), account: "", user: "", champion: champ, level: num(T(q(p, ".player-hero-level"))), kills: k, deaths: d,
         assists: a, cs: num(T(q(p, ".submatch-lol-player-minions"))), gold: gold ? num(gold.getAttribute("title") || T(gold)) : null,
         result: h.result || "", keystone: perks[0] || "", tree: perks[1] || "", spell1: spells[0] || "", spell2: spells[1] || "",
         items: [0, 1, 2, 3, 4, 5, 6].map(i => items[i] || "") });
     });
   }
-  out.match.games = out.games.length; out.v = 2;
+  out.match.games = out.games.length; out.v = 3;
   return out;
 }
 
@@ -103,8 +107,8 @@ function buildWorkbook(results, icons) {
     all("games").map(g => [g.match, g.group, g.matchday, g.date, g.game, g.gameId, g.blue, g.red, g.winner, g.min, g.created, g.start, g.end]));
   add("TeamGames", ["Match", "Group", "Matchday", "Game", "Team", "Opponent", "Side", "Result", "Kills", "Deaths", "Assists", "Gold", "Towers", "Inhibitors", "Barons", "Dragons", "Heralds", "Duration (min)"],
     all("tgs").map(t => [t.match, t.group, t.matchday, t.game, t.team, t.opp, t.side, t.result, t.kills, t.deaths, t.assists, t.gold, t.towers, t.inh, t.barons, t.dragons, t.heralds, t.min]));
-  add("Players", ["Match", "Group", "Matchday", "Game", "Team", "Side", "Role (by row)", "Player", "Champion", "Level", "Kills", "Deaths", "Assists", "CS", "Gold", "Result", "Keystone", "Rune tree", "Spell 1", "Spell 2", "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Account ID"],
-    all("players").map(p => [p.match, p.group, p.matchday, p.game, p.team, p.side, p.role, p.player, p.champion, p.level, p.kills, p.deaths, p.assists, p.cs, p.gold, p.result, p.keystone, p.tree, p.spell1, p.spell2, ...p.items, p.account || ""]));
+  add("Players", ["Match", "Group", "Matchday", "Game", "Team", "Side", "Role (by row)", "Player", "Champion", "Level", "Kills", "Deaths", "Assists", "CS", "Gold", "Result", "Keystone", "Rune tree", "Spell 1", "Spell 2", "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Account ID", "User"],
+    all("players").map(p => [p.match, p.group, p.matchday, p.game, p.team, p.side, p.role, p.player, p.champion, p.level, p.kills, p.deaths, p.assists, p.cs, p.gold, p.result, p.keystone, p.tree, p.spell1, p.spell2, ...p.items, p.account || "", p.user || ""]));
   add("Draft", ["Match", "Group", "Matchday", "Game", "Draft order", "Type", "Champion", "Side", "Team"],
     all("drafts").map(d => [d.match, d.group, d.matchday, d.game, d.order, d.type, d.champion, d.side, d.team]));
   add("Icons", ["Champion", "Image"], Object.entries(icons || {}).sort((a, b) => a[0].localeCompare(b[0])));
